@@ -18,12 +18,19 @@ import           Text.Megaparsec.Char
 import qualified Text.Megaparsec.Char.Lexer     as L
 
 
-{-
-EXPR = START END
-START = VAR | DIGIT
-END = OP EXPR | NOTHING
-OP = "-" | "+" | "*" | "/" |
+---------------
+--- Parsing ---
+---------------
 
+{-
+New Grammar:
+
+EXPR = START END
+START = "-" EXPR | VAR | DIGIT
+END = OP EXPR | NOTHING
+OP = "-" | "+" | "*" | "/" | "="
+
+Old Grammar:
 
 EXPR = VAR | DIGIT | SUM | SUB | NEGATE | PRODUCT | DIV | ASSIGN
 
@@ -98,6 +105,9 @@ parseVar = lexeme $ Var <$> identifier
 parseNegation :: Parser Expr
 parseNegation = parseMinus *> parseExpr >>= pure . Negation
 
+parseExprs :: Parser [Expr]
+parseExprs = parseExpr `sepBy` parseSemi
+
 parseExpr :: Parser Expr
 parseExpr = do
   t1 <- parseStart
@@ -123,6 +133,10 @@ parseEnd = choice [pAdd, pSub, pMul, pDiv, pAssign, pure Epsilon]
     pMul    = parseStar  *> (MulTag    <$> parseExpr)
     pDiv    = parseSlash *> (DivTag    <$> parseExpr)
     pAssign = parseEqual *> (AssignTag <$> parseExpr)
+
+------------------
+--- Evaluation ---
+------------------
 
 data Expr
   = Var Text
@@ -158,8 +172,8 @@ eval (Division expr' expr'') = do
   y <- eval expr''
   pure (x * y)
 
---evalList :: [Expr] -> Map.Map Text Int
---evalList = foldl (\b a -> fst (eval b a)) mempty
+evalList :: [Expr] -> State GlobalState Int
+evalList exprs = let x = traverse eval exprs in head <$> x
 
 repl :: GlobalState -> IO ()
 repl initialState = do
@@ -175,13 +189,13 @@ runRepl :: IO ()
 runRepl = repl Map.empty
 
 main :: IO ()
-main = runRepl
---  file <- T.pack <$> readFile "input.txt"
---
---  let ast = runParser parseTerm "input.txt" file
---
-  --  case ast of
---    Left e -> print e
---    Right a -> do
---      -- putStrLn $ "AST: " <> show a
---      print (eval Map.empty a)
+main = do
+  file <- T.pack <$> readFile "input.txt"
+
+  let exprs = runParser parseExprs mempty file
+  case exprs of
+    Left e -> print e
+    Right a -> do
+      putStrLn $ "AST: " <> show a
+      let result = evalState (evalList a) Map.empty
+      print result
