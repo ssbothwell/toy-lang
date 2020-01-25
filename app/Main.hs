@@ -134,6 +134,7 @@ parseEnd = choice [pAdd, pSub, pMul, pDiv, pAssign, pure Epsilon]
     pDiv    = parseSlash *> (DivTag    <$> parseExpr)
     pAssign = parseEqual *> (AssignTag <$> parseExpr)
 
+
 ------------------
 --- Evaluation ---
 ------------------
@@ -175,6 +176,11 @@ eval (Division expr' expr'') = do
 evalList :: [Expr] -> State GlobalState Int
 evalList exprs = let x = traverse eval exprs in head <$> x
 
+
+----------
+--- IO ---
+----------
+
 repl :: GlobalState -> IO ()
 repl initialState = do
   input <- runParser parseExpr mempty . T.pack <$> getLine
@@ -195,7 +201,6 @@ main = do
   let exprs = runParser parseExprs mempty file
   case exprs of
     Left e -> print e
-    Right a -> do
-      putStrLn $ "AST: " <> show a
+    Right a ->
       let result = evalState (evalList a) Map.empty
-      print result
+      in print result
