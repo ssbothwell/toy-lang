@@ -9,6 +9,7 @@ import           Data.Functor
 import qualified Data.Map                       as Map
 import           Data.Text                      (Text)
 import qualified Data.Text                      as T
+import           Data.Text.Encoding             (decodeUtf8)
 import           Data.Void
 import           System.IO
 import           Text.Megaparsec                hiding (State)
@@ -29,23 +30,77 @@ lexeme = L.lexeme sc
 symbol :: Text -> Parser Text
 symbol = L.symbol sc
 
-integer :: Parser Integer
-integer = lexeme L.decimal
+rws :: [Text]
+rws = ["=", "+", "-", "*", "/" ]
 
-float :: Parser Double
-float = lexeme L.float
+identifier :: Parser Text
+identifier = (lexeme . try) (p >>= check)
+  where
+    p :: Parser Text
+    p = T.cons <$> Text.Megaparsec.Char.letterChar <*> (T.pack <$> many Text.Megaparsec.Char.alphaNumChar)
+    check :: Text -> Parser Text
+    check str = if str `elem` rws
+                 then fail $ "keyword " ++ show str ++ " cannot be an identifier"
+                 else pure str
 
-signedInteger :: Parser Integer
-signedInteger = L.signed sc integer
+parseParens :: Parser a -> Parser a
+parseParens = between (symbol "(") (symbol ")")
 
-signedFloat :: Parser Double
-signedFloat = L.signed sc float
+parseSemi :: Parser ()
+parseSemi = void $ symbol ";"
 
-pKeyword :: Text -> Parser Text
-pKeyword keyword = lexeme (string keyword <* notFollowedBy alphaNumChar)
+parseEqual :: Parser ()
+parseEqual = void $ symbol "="
+
+parsePlus :: Parser ()
+parsePlus = void $ symbol "+"
+
+parseMinus :: Parser ()
+parseMinus = void $ symbol "-"
+
+parseSlash :: Parser ()
+parseSlash = void $ symbol "/"
+
+parseStar :: Parser ()
+parseStar = void $ symbol "*"
+
+parseInt :: Parser Expr
+parseInt = lexeme $ Int <$> L.decimal
+
+parseVar :: Parser Expr
+parseVar = lexeme $ Var <$> identifier
+
+parseOp :: Parser () -> (Expr -> Expr -> Expr) -> Parser Expr
+parseOp pOp cnstr = lexeme $ do
+  x <- parseTerm
+  pOp
+  y <- parseTerm
+  pure $ x `cnstr` y
+
+parseAdd :: Parser Expr
+parseAdd = parseOp parsePlus Sum
+
+parseSubtract :: Parser Expr
+parseSubtract = parseOp parseMinus Subtr
+
+parseMultiply :: Parser Expr
+parseMultiply = parseOp parseStar Product
+
+parseDivide :: Parser Expr
+parseDivide = parseOp parseSlash Division
+
+parseEquals :: Parser Expr
+parseEquals = lexeme $ do
+  var <- parseVar
+  parseEquals
+  term <- parseTerm
+  pure $ Assignment var term
+
+parseTerm :: Parser Expr
+parseTerm = parseInt <|> parseVar <|> parseAdd <|> parseSubtract <|> parseMultiply <|> parseDivide <|> parseEquals
 
 data Expr
-  = Var String
+  = Var Text
   | Int Int
   | Negation Expr
   | Sum Expr Expr
@@ -55,62 +110,12 @@ data Expr
   | Assignment Expr Expr
   deriving (Show, Eq)
 
-pVariable :: Parser Expr
-pVariable = Var <$> lexeme ((:) <$> letterChar <*> many alphaNumChar <?> "variable")
-
-pInteger :: Parser Expr
-pInteger = Int <$> lexeme L.decimal
-
-parens :: Parser a -> Parser a
-parens = between (symbol "(") (symbol ")")
-
-pExpr :: Parser Expr
-pExpr = makeExprParser pTerm operatorTable
-
-pExprs :: Parser [Expr]
-pExprs = many pExpr
-
-semi :: Parser ()
-semi = void $ symbol ";"
-
-pTerm :: Parser Expr
-pTerm = choice
- [ parens pExpr
- , pVariable
- , pInteger
- ]
-
-binary :: Text -> (Expr -> Expr -> Expr) -> Operator Parser Expr
-binary name f = InfixL (f <$ symbol name)
-
-binaryR :: Text -> (Expr -> Expr -> Expr) -> Operator Parser Expr
-binaryR name f = InfixR (f <$ symbol name)
-
-prefix, postfix :: Text -> (Expr -> Expr) -> Operator Parser Expr
-prefix name f = Prefix (f <$ symbol name)
-postfix name f = Postfix (f <$ symbol name)
-
-operatorTable :: [[Operator Parser Expr]]
-operatorTable =
-  [ [ prefix "-" Negation
-    , prefix "+" id
-    ]
-  , [ binary "*" Product
-    , binary "/" Division
-    ]
-  , [ binary "+" Sum
-    , binary "-" Subtr
-    ]
-  , [ binaryR "=" Assignment ]
-  ]
-
-
-lookupVar :: Map.Map String Int -> String -> Int
+lookupVar :: Map.Map Text Int -> Text -> Int
 lookupVar map s = case (Map.lookup s map)  of
-              Nothing -> error $ "Could not find variable named " <> s <> "\n" <> show map
+              Nothing -> error $ "Could not find variable named " <> show s <> "\n" <> show map
               Just x  -> x
 
-eval :: Map.Map String Int -> Expr -> (Map.Map String Int, Int)
+eval :: Map.Map Text Int -> Expr -> (Map.Map Text Int, Int)
 eval map (Var s)                     = (map, lookupVar map s)
 eval map (Int x)                     = (map, x)
 
@@ -142,14 +147,14 @@ eval map (Division expr' expr'') = (map'', val `div` val')
                                 (map', val) = eval map expr'
                                 (map'', val') = eval map' expr''
 
-evalList :: [Expr] -> Map.Map String Int
+evalList :: [Expr] -> Map.Map Text Int
 evalList = foldl (\b a -> fst (eval b a)) mempty
 
 main :: IO ()
 main = do
   file <- T.pack <$> readFile "input.txt"
 
-  let ast = runParser pExprs "input.txt" file
+  let ast = runParser parseTerm "input.txt" file
 
   case ast of
     Left e -> print e
