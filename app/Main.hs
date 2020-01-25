@@ -6,9 +6,10 @@ module Main where
 import           Control.Applicative            hiding (many)
 import           Control.Monad
 import           Control.Monad.State
+import           Control.Monad.Except
 import           Data.Functor
 import qualified Data.Map                       as Map
-import           Data.Map                       ((!), Map)
+import           Data.Map                       ((!?), Map)
 import           Data.Text                      (Text)
 import qualified Data.Text                      as T
 import           Data.Text.Encoding             (decodeUtf8)
@@ -150,17 +151,28 @@ data Expr
   | Assignment Expr Expr
   deriving (Show, Eq)
 
-type GlobalState = Map Text Int
+data EvalError = BadAssignment | OutOfScope
+  deriving Show
 
-eval :: Expr -> State GlobalState Int
+type GlobalState = Map Text Int
+type EvalM = StateT GlobalState (Except EvalError) Int
+
+runEvalM :: EvalM -> GlobalState -> Either EvalError (Int, GlobalState)
+runEvalM eval s = runExcept (runStateT eval s)
+
+eval :: Expr -> EvalM
 eval = \case
-  Var s -> gets (flip (!) s)
+  Var s -> do
+    mint <- gets (flip (!?) s)
+    case mint of
+      Nothing -> throwError OutOfScope
+      Just i -> pure i
   Int x -> pure x
   Assignment (Var s) expr -> do
     val <- eval expr
     modify (Map.insert s val)
     pure val
-  Assignment expr _ -> error $ "Expected left side of assignment to be a variable. Got " <> show expr
+  Assignment expr _ -> throwError BadAssignment
   Negation expr -> eval expr >>= pure . negate
   Sum expr' expr'' -> do
     x <- eval expr'
@@ -175,7 +187,7 @@ eval = \case
     y <- eval expr''
     pure (x * y)
 
-evalList :: [Expr] -> State GlobalState Int
+evalList :: [Expr] -> EvalM
 evalList = fmap head . traverse eval
 
 
@@ -183,15 +195,15 @@ evalList = fmap head . traverse eval
 --- IO ---
 ----------
 
-repl :: GlobalState -> IO ()
+repl :: Map Text Int -> IO ()
 repl initialState = do
   input <- runParser parseExpr mempty . T.pack <$> getLine
   case input of
     Left e -> print e
-    Right ast -> do
-      let (result, state) = runState (eval ast) initialState
-      print result
-      repl state
+    Right ast ->
+      case runEvalM (eval ast) initialState of
+        Left e -> print e >> repl initialState
+        Right (result, state) -> print result >> repl state
 
 runRepl :: IO ()
 runRepl = repl Map.empty
@@ -204,5 +216,6 @@ main = do
   case exprs of
     Left e -> print e
     Right a ->
-      let result = evalState (evalList a) Map.empty
-      in print result
+      case runEvalM (evalList a) Map.empty of
+        Left e -> print e
+        Right (result, _) -> print result
