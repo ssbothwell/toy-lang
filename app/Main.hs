@@ -110,14 +110,14 @@ parseExprs = parseExpr `sepBy` parseSemi
 
 parseExpr :: Parser Expr
 parseExpr = do
-  t1 <- parseStart
+  t1 <- try (parseParens parseExpr) <|> parseStart
   mT2 <- parseEnd
   case mT2 of
-    Epsilon -> pure t1
-    AddTag t2 -> pure (Sum t1 t2)
-    SubTag t2 -> pure (Sum t1 (Negation t2))
-    MulTag t2 -> pure (Product t1 t2)
-    DivTag t2 -> pure (Division t1 t2)
+    Epsilon      -> pure t1
+    AddTag t2    -> pure (Sum t1 t2)
+    SubTag t2    -> pure (Sum t1 (Negation t2))
+    MulTag t2    -> pure (Product t1 t2)
+    DivTag t2    -> pure (Division t1 t2)
     AssignTag t2 -> pure (Assignment t1 t2)
 
 parseStart :: Parser Expr
