@@ -158,7 +158,7 @@ type GlobalState = Map Text Int
 type EvalM = StateT GlobalState (Except EvalError) Int
 
 runEvalM :: EvalM -> GlobalState -> Either EvalError (Int, GlobalState)
-runEvalM eval s = runExcept (runStateT eval s)
+runEvalM eval = runExcept . runStateT eval
 
 eval :: Expr -> EvalM
 eval = \case
@@ -195,7 +195,7 @@ evalList = fmap head . traverse eval
 --- IO ---
 ----------
 
-repl :: Map Text Int -> IO ()
+repl :: GlobalState -> IO ()
 repl initialState = do
   input <- runParser parseExpr mempty . T.pack <$> getLine
   case input of
