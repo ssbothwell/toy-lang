@@ -25,7 +25,7 @@ import qualified Text.Megaparsec.Char.Lexer     as L
 {-
 New Grammar:
 
-EXPR = START END
+EXPR = "(" EXPR ")" | START END
 START = "-" EXPR | VAR | DIGIT
 END = OP EXPR | NOTHING
 OP = "-" | "+" | "*" | "/" | "="
