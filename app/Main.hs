@@ -17,6 +17,30 @@ import           Text.Megaparsec                hiding (State)
 import           Text.Megaparsec.Char
 import qualified Text.Megaparsec.Char.Lexer     as L
 
+
+{-
+EXPR = START END
+START = VAR | DIGIT
+END = OP EXPR | NOTHING
+OP = "-" | "+" | "*" | "/" |
+
+
+EXPR = VAR | DIGIT | SUM | SUB | NEGATE | PRODUCT | DIV | ASSIGN
+
+SUM = EXPR "+" EXPR;
+SUB = EXPR "-" EXPR;
+NEGATE = "-" EXPR;
+PRODUCT = EXPR "*" EXPR;
+DIV = EXPR "/" EXPR;
+ASSIGN = VAR "=" EXPR;
+
+VAR = ALPHA { ALPHA | DIGIT };
+DIGIT = "0".."9";
+
+ALPHA = "A".."Z" | "a".."z";
+INTEGER = DIGIT {DIGIT};
+-}
+
 type Parser = Parsec Void Text
 
 sc :: Parser ()
@@ -71,37 +95,34 @@ parseInt = lexeme $ Int <$> L.decimal
 parseVar :: Parser Expr
 parseVar = lexeme $ Var <$> identifier
 
-parseOp :: Parser () -> (Expr -> Expr -> Expr) -> Parser Expr
-parseOp pOp cnstr = lexeme $ do
-  x <- parseTerm
-  pOp
-  y <- parseTerm
-  pure $ x `cnstr` y
-
-parseAdd :: Parser Expr
-parseAdd = parseOp parsePlus Sum
-
-parseMultiply :: Parser Expr
-parseMultiply = parseOp parseStar Product
-
-parseDivide :: Parser Expr
-parseDivide = parseOp parseSlash Division
-
 parseNegation :: Parser Expr
-parseNegation = lexeme $ do
-  parseMinus
-  term <- parseTerm
-  pure $ Negation term
+parseNegation = parseMinus *> parseExpr >>= pure . Negation
 
-parseEquals :: Parser Expr
-parseEquals = lexeme $ do
-  var <- parseVar
-  parseEqual
-  term <- parseTerm
-  pure $ Assignment var term
+parseExpr :: Parser Expr
+parseExpr = do
+  t1 <- parseStart
+  mT2 <- parseEnd
+  case mT2 of
+    Epsilon -> pure t1
+    AddTag t2 -> pure (Sum t1 t2)
+    SubTag t2 -> pure (Sum t1 (Negation t2))
+    MulTag t2 -> pure (Product t1 t2)
+    DivTag t2 -> pure (Division t1 t2)
+    AssignTag t2 -> pure (Assignment t1 t2)
 
-parseTerm :: Parser Expr
-parseTerm = parseEquals <|> parseAdd <|> parseMultiply <|> parseDivide <|> parseInt <|> parseVar
+parseStart :: Parser Expr
+parseStart = parseNegation <|> parseVar <|> parseInt <|> undefined
+
+data Tag a = AddTag a | SubTag a | MulTag a | DivTag a | AssignTag a | Epsilon
+
+parseEnd  :: Parser (Tag Expr)
+parseEnd = choice [pAdd, pSub, pMul, pDiv, pAssign, pure Epsilon]
+  where
+    pAdd    = parsePlus  *> (AddTag    <$> parseExpr)
+    pSub    = parseMinus *> (SubTag    <$> parseExpr)
+    pMul    = parseStar  *> (MulTag    <$> parseExpr)
+    pDiv    = parseSlash *> (DivTag    <$> parseExpr)
+    pAssign = parseEqual *> (AssignTag <$> parseExpr)
 
 data Expr
   = Var Text
@@ -142,7 +163,7 @@ eval (Division expr' expr'') = do
 
 repl :: GlobalState -> IO ()
 repl initialState = do
-  input <- runParser parseTerm mempty . T.pack <$> getLine
+  input <- runParser parseExpr mempty . T.pack <$> getLine
   case input of
     Left e -> print e
     Right ast -> do
@@ -159,7 +180,7 @@ main = runRepl
 --
 --  let ast = runParser parseTerm "input.txt" file
 --
---  case ast of
+  --  case ast of
 --    Left e -> print e
 --    Right a -> do
 --      -- putStrLn $ "AST: " <> show a
