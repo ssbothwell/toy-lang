@@ -4,7 +4,7 @@ module Main where
 
 import           Control.Applicative            hiding (many)
 import           Control.Monad
-import           Control.Monad.Combinators.Expr
+import           Control.Monad.State
 import           Data.Functor
 import qualified Data.Map                       as Map
 import           Data.Text                      (Text)
@@ -95,12 +95,12 @@ parseNegation = lexeme $ do
 parseEquals :: Parser Expr
 parseEquals = lexeme $ do
   var <- parseVar
-  parseEquals
+  parseEqual
   term <- parseTerm
   pure $ Assignment var term
 
 parseTerm :: Parser Expr
-parseTerm = parseInt <|> parseVar <|> parseAdd <|> parseMultiply <|> parseDivide <|> parseEquals
+parseTerm = parseEquals <|> parseAdd <|> parseMultiply <|> parseDivide <|> parseInt <|> parseVar
 
 data Expr
   = Var Text
@@ -117,35 +117,45 @@ lookupVar map s = case (Map.lookup s map)  of
               Nothing -> error $ "Could not find variable named " <> show s <> "\n" <> show map
               Just x  -> x
 
-eval :: Map.Map Text Int -> Expr -> (Map.Map Text Int, Int)
-eval map (Var s)                     = (map, lookupVar map s)
-eval map (Int x)                     = (map, x)
+type GlobalState = Map.Map Text Int
 
-eval map (Assignment (Var s) expr) = (Map.insert s val map', val)
-                                     where
-                                       (map', val) = eval map expr
-eval map (Assignment expr _) = error $ "Expected left side of assignment to be a variable. Got " <> show expr
+eval :: Expr -> State GlobalState Int
+eval (Var s) = gets (flip lookupVar s)
+eval (Int x) = pure x
+eval (Assignment (Var s) expr) = do
+  val <- eval expr
+  modify (Map.insert s val)
+  pure val
+eval (Assignment expr _) = error $ "Expected left side of assignment to be a variable. Got " <> show expr
+eval (Negation expr) = eval expr >>= pure . negate
+eval (Sum expr' expr'') = do
+  x <- eval expr'
+  y <- eval expr''
+  pure (x + y)
+eval (Product expr' expr'') = do
+  x <- eval expr'
+  y <- eval expr''
+  pure (x * y)
+eval (Division expr' expr'') = do
+  x <- eval expr'
+  y <- eval expr''
+  pure (x * y)
 
-eval map (Negation expr) = (map', negate val)
-                           where (map', val) = eval map expr
+--evalList :: [Expr] -> Map.Map Text Int
+--evalList = foldl (\b a -> fst (eval b a)) mempty
 
-eval map (Sum expr' expr'') = (map'', val + val')
-                              where
-                                (map', val) = eval map expr'
-                                (map'', val') = eval map' expr''
+repl :: GlobalState -> IO ()
+repl initialState = do
+  input <- runParser parseTerm mempty . T.pack <$> getLine
+  case input of
+    Left e -> print e
+    Right ast -> do
+      let (result, state) = runState (eval ast) initialState
+      print result
+      repl state
 
-eval map (Product expr' expr'') = (map'', val * val')
-                              where
-                                (map', val) = eval map expr'
-                                (map'', val') = eval map' expr''
-
-eval map (Division expr' expr'') = (map'', val `div` val')
-                              where
-                                (map', val) = eval map expr'
-                                (map'', val') = eval map' expr''
-
-evalList :: [Expr] -> Map.Map Text Int
-evalList = foldl (\b a -> fst (eval b a)) mempty
+runRepl :: IO ()
+runRepl = repl Map.empty
 
 main :: IO ()
 main = do
