@@ -80,14 +80,17 @@ parseOp pOp cnstr = lexeme $ do
 parseAdd :: Parser Expr
 parseAdd = parseOp parsePlus Sum
 
-parseSubtract :: Parser Expr
-parseSubtract = parseOp parseMinus Subtr
-
 parseMultiply :: Parser Expr
 parseMultiply = parseOp parseStar Product
 
 parseDivide :: Parser Expr
 parseDivide = parseOp parseSlash Division
+
+parseNegation :: Parser Expr
+parseNegation = lexeme $ do
+  parseMinus
+  term <- parseTerm
+  pure $ Negation term
 
 parseEquals :: Parser Expr
 parseEquals = lexeme $ do
@@ -97,14 +100,13 @@ parseEquals = lexeme $ do
   pure $ Assignment var term
 
 parseTerm :: Parser Expr
-parseTerm = parseInt <|> parseVar <|> parseAdd <|> parseSubtract <|> parseMultiply <|> parseDivide <|> parseEquals
+parseTerm = parseInt <|> parseVar <|> parseAdd <|> parseMultiply <|> parseDivide <|> parseEquals
 
 data Expr
   = Var Text
   | Int Int
   | Negation Expr
   | Sum Expr Expr
-  | Subtr Expr Expr
   | Product Expr Expr
   | Division Expr Expr
   | Assignment Expr Expr
@@ -132,11 +134,6 @@ eval map (Sum expr' expr'') = (map'', val + val')
                                 (map', val) = eval map expr'
                                 (map'', val') = eval map' expr''
 
-eval map (Subtr expr' expr'') = (map'', val - val')
-                              where
-                                (map', val) = eval map expr'
-                                (map'', val') = eval map' expr''
-
 eval map (Product expr' expr'') = (map'', val * val')
                               where
                                 (map', val) = eval map expr'
@@ -160,5 +157,4 @@ main = do
     Left e -> print e
     Right a -> do
       -- putStrLn $ "AST: " <> show a
-
-      print (evalList a)
+      print (eval Map.empty a)
