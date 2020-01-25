@@ -1,4 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE LambdaCase #-}
 
 module Main where
 
@@ -152,26 +153,27 @@ data Expr
 type GlobalState = Map Text Int
 
 eval :: Expr -> State GlobalState Int
-eval (Var s) = gets (flip (!) s)
-eval (Int x) = pure x
-eval (Assignment (Var s) expr) = do
-  val <- eval expr
-  modify (Map.insert s val)
-  pure val
-eval (Assignment expr _) = error $ "Expected left side of assignment to be a variable. Got " <> show expr
-eval (Negation expr) = eval expr >>= pure . negate
-eval (Sum expr' expr'') = do
-  x <- eval expr'
-  y <- eval expr''
-  pure (x + y)
-eval (Product expr' expr'') = do
-  x <- eval expr'
-  y <- eval expr''
-  pure (x * y)
-eval (Division expr' expr'') = do
-  x <- eval expr'
-  y <- eval expr''
-  pure (x * y)
+eval = \case
+  Var s -> gets (flip (!) s)
+  Int x -> pure x
+  Assignment (Var s) expr -> do
+    val <- eval expr
+    modify (Map.insert s val)
+    pure val
+  Assignment expr _ -> error $ "Expected left side of assignment to be a variable. Got " <> show expr
+  Negation expr -> eval expr >>= pure . negate
+  Sum expr' expr'' -> do
+    x <- eval expr'
+    y <- eval expr''
+    pure (x + y)
+  Product expr' expr'' -> do
+    x <- eval expr'
+    y <- eval expr''
+    pure (x * y)
+  Division expr' expr'' -> do
+    x <- eval expr'
+    y <- eval expr''
+    pure (x * y)
 
 evalList :: [Expr] -> State GlobalState Int
 evalList = fmap head . traverse eval
