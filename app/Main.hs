@@ -7,6 +7,7 @@ import           Control.Monad
 import           Control.Monad.State
 import           Data.Functor
 import qualified Data.Map                       as Map
+import           Data.Map                       ((!), Map)
 import           Data.Text                      (Text)
 import qualified Data.Text                      as T
 import           Data.Text.Encoding             (decodeUtf8)
@@ -112,15 +113,10 @@ data Expr
   | Assignment Expr Expr
   deriving (Show, Eq)
 
-lookupVar :: Map.Map Text Int -> Text -> Int
-lookupVar map s = case (Map.lookup s map)  of
-              Nothing -> error $ "Could not find variable named " <> show s <> "\n" <> show map
-              Just x  -> x
-
-type GlobalState = Map.Map Text Int
+type GlobalState = Map Text Int
 
 eval :: Expr -> State GlobalState Int
-eval (Var s) = gets (flip lookupVar s)
+eval (Var s) = gets (flip (!) s)
 eval (Int x) = pure x
 eval (Assignment (Var s) expr) = do
   val <- eval expr
@@ -158,13 +154,13 @@ runRepl :: IO ()
 runRepl = repl Map.empty
 
 main :: IO ()
-main = do
-  file <- T.pack <$> readFile "input.txt"
-
-  let ast = runParser parseTerm "input.txt" file
-
-  case ast of
-    Left e -> print e
-    Right a -> do
-      -- putStrLn $ "AST: " <> show a
-      print (eval Map.empty a)
+main = runRepl
+--  file <- T.pack <$> readFile "input.txt"
+--
+--  let ast = runParser parseTerm "input.txt" file
+--
+--  case ast of
+--    Left e -> print e
+--    Right a -> do
+--      -- putStrLn $ "AST: " <> show a
+--      print (eval Map.empty a)
