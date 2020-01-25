@@ -121,7 +121,7 @@ parseExpr = do
     AssignTag t2 -> pure (Assignment t1 t2)
 
 parseStart :: Parser Expr
-parseStart = parseNegation <|> parseVar <|> parseInt <|> undefined
+parseStart = parseNegation <|> parseVar <|> parseInt
 
 data Tag a = AddTag a | SubTag a | MulTag a | DivTag a | AssignTag a | Epsilon
 
