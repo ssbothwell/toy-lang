@@ -174,7 +174,7 @@ eval (Division expr' expr'') = do
   pure (x * y)
 
 evalList :: [Expr] -> State GlobalState Int
-evalList exprs = let x = traverse eval exprs in head <$> x
+evalList = fmap head . traverse eval
 
 
 ----------
